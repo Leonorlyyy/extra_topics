@@ -1,0 +1,135 @@
+---
+title: "stat_learning"
+author: "Leonor Rui"
+date: "2024-11-21"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+```{r}
+library(tidyverse)
+library(glmnet)
+set.seed(11)
+```
+
+
+## Lasso
+
+Best prediction values for complex models
+
+Import and clean birthweight data
+
+```{r}
+bwt_df = read_csv("data/birthweight.csv") |>
+  janitor::clean_names() |>
+  mutate(
+    babysex = 
+      case_match(babysex,
+                 1 ~ "male",
+                 2 ~ "female"),
+    babysex = fct_infreq(babysex),
+    frace = 
+      case_match(frace,
+                 1 ~ "white",
+                 2 ~ "black",
+                 3 ~ "asian",
+                 4 ~ "puerto rican",
+                 8 ~ "other"),
+    frace = fct_infreq(frace),
+    mrace = 
+      case_match(mrace,
+                 1 ~ "white",
+                 2 ~ "black",
+                 3 ~ "asian",
+                 4 ~ "puerto rican",
+                 8 ~ "other"),
+    mrace = fct_infreq(mrace)
+  ) |>
+  sample_n(200)
+```
+
+Construct inputs for `glmnet`
+
+```{r}
+## convert categorical variables to binary indicators
+x = model.matrix(bwt ~ ., data = bwt_df)[, -1]
+y = bwt_df |> pull(bwt)
+```
+
+Fit lasso for several lambdas
+
+```{r}
+lambda = 10^seq(-2, 2.75, by = 0.1)
+
+## Df = number of coefficients in the model
+lasso_fit = 
+  glmnet(x = x, y = y, lambda = lambda)
+
+## cross validation; fitting models for each lambda and find the smallest prediction error
+lasso_cv = 
+  cv.glmnet(x = x, y = y, lambda = lambda)
+
+## lambda with the best fit
+lambda_opt = lasso_cv[["lambda.min"]]
+```
+
+Usual lasso plot
+
+```{r}
+## The larger the lambda, the less coefficients are included in the model
+## small lambdas make the fitting progress similar to fitting regression model
+lasso_fit |>
+  broom::tidy() |>
+  filter (term != "(Intercept)") |>
+  select(term, lambda, estimate) |>
+  ## plug in estimate  0's for all lambdas for each term
+  complete(term, lambda, fill = list(estimate = 0)) |>
+  ggplot(aes(x = lambda, y = estimate, group = term, color = term)) +
+  geom_vline(xintercept = lambda_opt, color = "red") +
+  geom_line()
+```
+
+```{r}
+final_lasso_fit = 
+  glmnet(x = x, y = y, lambda = lambda_opt)
+
+final_lasso_fit |>
+  broom::tidy()
+```
+
+Look at CV results
+
+```{r}
+lasso_cv |>
+  broom::tidy() |>
+  ## estimate = prediction error
+  ggplot(aes(x = log(lambda, 10), y = estimate)) +
+  geom_point()
+```
+
+
+
+
+
+
+
+
